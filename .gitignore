@@ -1,3 +1,5 @@
 teleterm
 *.o
 *.sqlite
+apikey.txt
+run.sh
