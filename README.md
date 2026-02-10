@@ -1,4 +1,4 @@
-# teleterm
+# Teleterm
 
 Control your terminal from Telegram. Send keystrokes, read terminal output — all from your phone.
 
