@@ -28,23 +28,6 @@ In both cases, terminal output is sent as monospace text to Telegram with a refr
 
 ### Prerequisites
 
-**macOS:**
-- macOS 14+
-- Xcode Command Line Tools (`xcode-select --install`)
-
-**Linux:**
-- tmux
-- gcc, make
-- libcurl-dev, libsqlite3-dev
-
-### Build
-
-```bash
-make
-```
-
-The Makefile auto-detects your OS and builds the correct backend.
-
 ### Create a Telegram Bot
 
 Each machine needs its own bot. To create one:
@@ -70,7 +53,7 @@ echo "YOUR_BOT_TOKEN" > apikey.txt
 | Flag | Description |
 |------|-------------|
 | `--apikey <token>` | Telegram bot API token |
-| `--use-weak-security` | Disable TOTP (owner-only lock still applies) |
+| `--use-weak-security` | Disable Authenticator (owner-only lock still applies) |
 | `--dbfile <path>` | Custom database path (default: `./mybot.sqlite`) |
 | `--dangerously-attach-to-any-window` | Show all windows, not just terminals (macOS only) |
 
