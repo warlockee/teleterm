@@ -297,6 +297,18 @@ void disconnect(void) {
  * Bot Command Handlers
  * ========================================================================= */
 
+/* Check if command name is a shell (= terminal is idle/waiting for input). */
+static int is_shell_name(const char *cmd) {
+    static const char *shells[] = {
+        "bash", "zsh", "sh", "fish", "dash", "ksh", "csh", "tcsh",
+        "-bash", "-zsh", "-sh", "-fish", "login", "shell", NULL
+    };
+    for (int i = 0; shells[i]; i++) {
+        if (strcmp(cmd, shells[i]) == 0) return 1;
+    }
+    return 0;
+}
+
 /* Build the .list response. */
 sds build_list_message(void) {
     backend_list();
@@ -310,13 +322,20 @@ sds build_list_message(void) {
     msg = sdscat(msg, "Terminal windows:\n");
     for (int i = 0; i < TermCount; i++) {
         TermInfo *t = &TermList[i];
+        char status[160] = "";
+        if (t->command[0]) {
+            if (is_shell_name(t->command))
+                snprintf(status, sizeof(status), " \xe2\x9c\x85");          /* ✅ idle */
+            else
+                snprintf(status, sizeof(status), " \xe2\x8f\xb3 %s", t->command); /* ⏳ cmd */
+        }
         char line[512];
         if (t->title[0]) {
-            snprintf(line, sizeof(line), ".%d %d %s - %s\n",
-                     i + 1, (int)t->pid, t->name, t->title);
+            snprintf(line, sizeof(line), ".%d %d %s - %s%s\n",
+                     i + 1, (int)t->pid, t->name, t->title, status);
         } else {
-            snprintf(line, sizeof(line), ".%d %d %s\n",
-                     i + 1, (int)t->pid, t->name);
+            snprintf(line, sizeof(line), ".%d %d %s%s\n",
+                     i + 1, (int)t->pid, t->name, status);
         }
         msg = sdscat(msg, line);
     }

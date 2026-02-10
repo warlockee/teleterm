@@ -62,6 +62,44 @@ void backend_free_list(void) {
     TermCount = 0;
 }
 
+/* Forward declarations for AX helpers used in backend_list(). */
+static sds ax_read_value(AXUIElementRef element);
+static sds ax_get_text_content(AXUIElementRef element);
+
+/* Check if the last non-blank line of terminal text looks like a shell prompt.
+ * Common endings: $, #, %, >, ❯ (E2 9D AF), ➜ (E2 9E 9C). */
+static int last_line_is_prompt(const char *text) {
+    size_t len = strlen(text);
+    /* Skip trailing whitespace/newlines. */
+    while (len > 0 && (text[len-1] == '\n' || text[len-1] == '\r' || text[len-1] == ' '))
+        len--;
+    if (len == 0) return 0;
+
+    /* Find start of last line. */
+    size_t ls = len;
+    while (ls > 0 && text[ls-1] != '\n') ls--;
+
+    /* Trim trailing spaces on the line. */
+    size_t end = len;
+    while (end > ls && text[end-1] == ' ') end--;
+    if (end <= ls) return 0;
+
+    char last = text[end - 1];
+    if (last == '$' || last == '#' || last == '%' || last == '>') return 1;
+
+    /* ❯ = E2 9D AF */
+    if (end - ls >= 3) {
+        const unsigned char *p = (const unsigned char *)text + end - 3;
+        if (p[0] == 0xE2 && p[1] == 0x9D && p[2] == 0xAF) return 1;
+    }
+    /* ➜ = E2 9E 9C */
+    if (end - ls >= 3) {
+        const unsigned char *p = (const unsigned char *)text + end - 3;
+        if (p[0] == 0xE2 && p[1] == 0x9E && p[2] == 0x9C) return 1;
+    }
+    return 0;
+}
+
 /* ============================================================================
  * backend_list  (adapted from refresh_window_list)
  * ========================================================================= */
@@ -137,14 +175,13 @@ int backend_list(void) {
         t->name[sizeof(t->name) - 1] = '\0';
         strncpy(t->title, title, sizeof(t->title) - 1);
         t->title[sizeof(t->title) - 1] = '\0';
+        t->command[0] = '\0';
     }
 
     CFRelease(list);
 
-    /* Fill in window titles via Accessibility API, since CGWindowList
-     * requires Screen Recording permission to return titles. */
+    /* Fill in window titles and detect command status via Accessibility API. */
     for (int i = 0; i < TermCount; i++) {
-        if (TermList[i].title[0]) continue; /* Already have a title. */
         AXUIElementRef app = AXUIElementCreateApplication(TermList[i].pid);
         if (!app) continue;
         CFArrayRef axwins = NULL;
@@ -157,12 +194,27 @@ int backend_list(void) {
                 CGWindowID wid = 0;
                 if (_AXUIElementGetWindow(win, &wid) == kAXErrorSuccess &&
                     wid == target_wid) {
-                    CFStringRef title = NULL;
-                    AXUIElementCopyAttributeValue(win, kAXTitleAttribute, (CFTypeRef *)&title);
-                    if (title) {
-                        CFStringGetCString(title, TermList[i].title,
-                            sizeof(TermList[i].title), kCFStringEncodingUTF8);
-                        CFRelease(title);
+                    /* Get title if missing. */
+                    if (!TermList[i].title[0]) {
+                        CFStringRef title = NULL;
+                        AXUIElementCopyAttributeValue(win, kAXTitleAttribute, (CFTypeRef *)&title);
+                        if (title) {
+                            CFStringGetCString(title, TermList[i].title,
+                                sizeof(TermList[i].title), kCFStringEncodingUTF8);
+                            CFRelease(title);
+                        }
+                    }
+                    /* Detect idle vs running by checking last line for prompt. */
+                    sds text = ax_get_text_content(win);
+                    if (text) {
+                        if (last_line_is_prompt(text))
+                            strncpy(TermList[i].command, "shell",
+                                sizeof(TermList[i].command) - 1);
+                        else
+                            strncpy(TermList[i].command, "running",
+                                sizeof(TermList[i].command) - 1);
+                        TermList[i].command[sizeof(TermList[i].command) - 1] = '\0';
+                        sdsfree(text);
                     }
                     break;
                 }
