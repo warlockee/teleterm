@@ -1,18 +1,34 @@
-CC = clang
-CFLAGS = -Wall -O2 -mmacosx-version-min=14.0
-FRAMEWORKS = -framework CoreGraphics -framework CoreFoundation \
-             -framework CoreServices -framework ApplicationServices
-LIBS = -lcurl -lsqlite3
+UNAME_S := $(shell uname -s)
 
-OBJS = bot.o botlib.o sds.o cJSON.o sqlite_wrap.o json_wrap.o qrcodegen.o sha1.o
+ifeq ($(UNAME_S),Darwin)
+    CC = clang
+    CFLAGS = -Wall -O2 -mmacosx-version-min=14.0
+    FRAMEWORKS = -framework CoreGraphics -framework CoreFoundation \
+                 -framework CoreServices -framework ApplicationServices
+    BACKEND = backend_macos.o
+else
+    CC = gcc
+    CFLAGS = -Wall -O2
+    FRAMEWORKS =
+    BACKEND = backend_tmux.o
+endif
+
+LIBS = -lcurl -lsqlite3
+OBJS = bot_common.o $(BACKEND) botlib.o sds.o cJSON.o sqlite_wrap.o json_wrap.o qrcodegen.o sha1.o
 
 all: teleterm
 
 teleterm: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(FRAMEWORKS) $(LIBS)
 
-bot.o: bot.c botlib.h sds.h
-	$(CC) $(CFLAGS) -c bot.c
+bot_common.o: bot_common.c botlib.h sds.h backend.h
+	$(CC) $(CFLAGS) -c bot_common.c
+
+backend_macos.o: backend_macos.c backend.h sds.h botlib.h
+	$(CC) $(CFLAGS) -c backend_macos.c
+
+backend_tmux.o: backend_tmux.c backend.h sds.h
+	$(CC) $(CFLAGS) -c backend_tmux.c
 
 botlib.o: botlib.c botlib.h sds.h cJSON.h sqlite_wrap.h
 	$(CC) $(CFLAGS) -c botlib.c

@@ -24,19 +24,62 @@ echo " | __/ _ \ |/ _ \ __/ _ \ '__| '_ \` _ \ "
 echo " | ||  __/ |  __/ ||  __/ |  | | | | | |"
 echo "  \__\___|_|\___|\__\___|_|  |_| |_| |_|"
 echo ""
-echo -e "${NC}  Control your Mac terminal from Telegram"
+echo -e "${NC}  Control your terminal from Telegram"
 echo ""
 
-# Step 1: Check Xcode CLI tools
-info "Checking for Xcode Command Line Tools..."
-if ! xcode-select -p &>/dev/null; then
-    warn "Xcode Command Line Tools not found. Installing..."
-    xcode-select --install
-    echo ""
-    echo "Please complete the installation dialog, then re-run this script."
+OS="$(uname)"
+
+if [[ "$OS" == "Darwin" ]]; then
+    # Step 1: Check Xcode CLI tools
+    info "Checking for Xcode Command Line Tools..."
+    if ! xcode-select -p &>/dev/null; then
+        warn "Xcode Command Line Tools not found. Installing..."
+        xcode-select --install
+        echo ""
+        echo "Please complete the installation dialog, then re-run this script."
+        exit 1
+    fi
+    ok "Xcode Command Line Tools found."
+elif [[ "$OS" == "Linux" ]]; then
+    # Step 1: Check Linux dependencies
+    info "Checking Linux build dependencies..."
+    MISSING=""
+    command -v gcc &>/dev/null || MISSING="$MISSING gcc"
+    command -v make &>/dev/null || MISSING="$MISSING make"
+    command -v tmux &>/dev/null || MISSING="$MISSING tmux"
+    pkg-config --exists libcurl 2>/dev/null || MISSING="$MISSING libcurl-dev"
+    pkg-config --exists sqlite3 2>/dev/null || MISSING="$MISSING libsqlite3-dev"
+
+    if [ -n "$MISSING" ]; then
+        warn "Missing packages:$MISSING"
+        info "Installing..."
+        if command -v apt-get &>/dev/null; then
+            # Map package names for apt
+            PKGS=""
+            [[ "$MISSING" == *gcc* ]] && PKGS="$PKGS build-essential"
+            [[ "$MISSING" == *make* ]] && PKGS="$PKGS build-essential"
+            [[ "$MISSING" == *tmux* ]] && PKGS="$PKGS tmux"
+            [[ "$MISSING" == *libcurl* ]] && PKGS="$PKGS libcurl4-openssl-dev"
+            [[ "$MISSING" == *libsqlite3* ]] && PKGS="$PKGS libsqlite3-dev"
+            sudo apt-get update -qq && sudo apt-get install -y $PKGS
+        elif command -v yum &>/dev/null; then
+            PKGS=""
+            [[ "$MISSING" == *gcc* ]] && PKGS="$PKGS gcc"
+            [[ "$MISSING" == *make* ]] && PKGS="$PKGS make"
+            [[ "$MISSING" == *tmux* ]] && PKGS="$PKGS tmux"
+            [[ "$MISSING" == *libcurl* ]] && PKGS="$PKGS libcurl-devel"
+            [[ "$MISSING" == *libsqlite3* ]] && PKGS="$PKGS sqlite-devel"
+            sudo yum install -y $PKGS
+        else
+            err "Please install:$MISSING"
+            exit 1
+        fi
+    fi
+    ok "Build dependencies found."
+else
+    err "Unsupported OS: $OS"
     exit 1
 fi
-ok "Xcode Command Line Tools found."
 
 # Step 2: Build
 info "Building teleterm..."
@@ -65,11 +108,14 @@ fi
 if [ ! -f apikey.txt ]; then
     echo -e "${BOLD}Telegram Bot Setup${NC}"
     echo ""
-    echo "  You need a Telegram bot token. To create one:"
+    echo -e "  ${YELLOW}Each machine needs its own bot.${NC}"
+    echo "  Don't reuse a bot token from another machine."
+    echo ""
+    echo "  To create a new bot:"
     echo ""
     echo "  1. Open Telegram and message @BotFather"
     echo "  2. Send /newbot"
-    echo "  3. Choose a name and username for your bot"
+    echo "  3. Name it after this machine (e.g. 'My Server Terminal')"
     echo "  4. Copy the API token"
     echo ""
     read -p "  Paste your bot API token: " API_KEY
@@ -114,19 +160,21 @@ else
     ok "TOTP enabled. You'll scan a QR code on first launch."
 fi
 
-# Step 5: Accessibility permission check
-echo ""
-info "Checking Accessibility permission..."
-echo ""
-echo "  teleterm needs Accessibility permission to:"
-echo "  - Read terminal window text"
-echo "  - Send keystrokes to terminal windows"
-echo "  - List and focus terminal windows"
-echo ""
-echo "  If prompted by macOS, click 'Allow' or add your terminal app"
-echo "  (iTerm2, Terminal, etc.) in:"
-echo "  System Settings > Privacy & Security > Accessibility"
-echo ""
+# Step 5: Accessibility permission check (macOS only)
+if [[ "$OS" == "Darwin" ]]; then
+    echo ""
+    info "Checking Accessibility permission..."
+    echo ""
+    echo "  teleterm needs Accessibility permission to:"
+    echo "  - Read terminal window text"
+    echo "  - Send keystrokes to terminal windows"
+    echo "  - List and focus terminal windows"
+    echo ""
+    echo "  If prompted by macOS, click 'Allow' or add your terminal app"
+    echo "  (iTerm2, Terminal, etc.) in:"
+    echo "  System Settings > Privacy & Security > Accessibility"
+    echo ""
+fi
 
 # Step 6: Create launch script
 cat > run.sh << RUNEOF
@@ -137,7 +185,18 @@ RUNEOF
 chmod +x run.sh
 ok "Created run.sh"
 
-# Step 7: Summary
+# Step 7: Linux tmux reminder
+if [[ "$OS" == "Linux" ]]; then
+    echo ""
+    echo -e "  ${YELLOW}Important:${NC} On Linux, teleterm controls tmux sessions."
+    echo "  Make sure your work is running inside tmux before using .list"
+    echo ""
+    echo "  Quick start:"
+    echo "    tmux new -s dev          # start a session"
+    echo "    tmux new -s server -d    # start detached"
+fi
+
+# Step 8: Summary
 echo ""
 echo -e "${GREEN}${BOLD}Setup complete!${NC}"
 echo ""
@@ -149,8 +208,8 @@ echo "  Then open Telegram and message your bot."
 echo "  The first user to message becomes the owner."
 echo ""
 echo "  Bot commands:"
-echo "    .list    - List terminal windows"
-echo "    .1 .2 .. - Connect to a window"
+echo "    .list    - List terminal sessions"
+echo "    .1 .2 .. - Connect to a session"
 echo "    .help    - Show all commands"
 echo ""
 echo -e "  ${YELLOW}Tip:${NC} To run in the background:"

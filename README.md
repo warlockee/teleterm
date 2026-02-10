@@ -1,8 +1,10 @@
 # teleterm
 
-Control your Mac terminal from Telegram. Send keystrokes, read terminal output — all from your phone.
+Control your terminal from Telegram. Send keystrokes, read terminal output — all from your phone.
 
-Fork of [antirez/tgterm](https://github.com/antirez/tgterm) with screenshot capture replaced by text-based output via the macOS Accessibility API. No Screen Recording permission needed.
+Works on **macOS** (via Accessibility API) and **Linux** (via tmux).
+
+> **One bot per machine.** Each machine needs its own Telegram bot token. Create a separate bot for each machine you want to control (e.g. `@my_macbook_bot`, `@my_server_bot`). Only one teleterm instance can use a given bot token at a time.
 
 ## Quick Start
 
@@ -12,19 +14,28 @@ cd teleterm
 ./setup.sh
 ```
 
-The setup script will:
-- Build the project
-- Walk you through creating a Telegram bot
-- Save your API key
-- Configure security mode
-- Start teleterm
+The setup script handles everything: installs dependencies, builds the project, walks you through creating a Telegram bot, and starts teleterm. Works on both macOS and Linux.
+
+## How It Works
+
+On **macOS**, teleterm reads terminal window text via the Accessibility API (`AXUIElement`) and injects keystrokes via `CGEvent`. It works with any terminal app — no Screen Recording permission needed.
+
+On **Linux**, teleterm uses tmux: `tmux list-panes` to discover sessions, `tmux capture-pane` to read content, and `tmux send-keys` to inject keystrokes. All sessions you want to control must run inside tmux.
+
+In both cases, terminal output is sent as monospace text to Telegram with a refresh button to update on demand.
 
 ## Manual Setup
 
 ### Prerequisites
 
+**macOS:**
 - macOS 14+
 - Xcode Command Line Tools (`xcode-select --install`)
+
+**Linux:**
+- tmux
+- gcc, make
+- libcurl-dev, libsqlite3-dev
 
 ### Build
 
@@ -32,21 +43,26 @@ The setup script will:
 make
 ```
 
+The Makefile auto-detects your OS and builds the correct backend.
+
 ### Create a Telegram Bot
+
+Each machine needs its own bot. To create one:
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot` and follow the prompts
-3. Copy the API token
+3. Name it something you'll recognize (e.g. "My Server Terminal")
+4. Copy the API token
 
 ### Run
 
 ```bash
-# Pass the API key directly
-./teleterm --apikey YOUR_BOT_TOKEN
-
-# Or save it to a file (recommended)
+# Save the token (recommended)
 echo "YOUR_BOT_TOKEN" > apikey.txt
 ./teleterm
+
+# Or pass it directly
+./teleterm --apikey YOUR_BOT_TOKEN
 ```
 
 ### Options
@@ -54,60 +70,72 @@ echo "YOUR_BOT_TOKEN" > apikey.txt
 | Flag | Description |
 |------|-------------|
 | `--apikey <token>` | Telegram bot API token |
-| `--use-weak-security` | Disable TOTP authentication (owner-only lock still applies) |
+| `--use-weak-security` | Disable TOTP (owner-only lock still applies) |
 | `--dbfile <path>` | Custom database path (default: `./mybot.sqlite`) |
-| `--dangerously-attach-to-any-window` | Show all windows, not just terminals |
+| `--dangerously-attach-to-any-window` | Show all windows, not just terminals (macOS only) |
 
 ## Usage
 
-Once teleterm is running, message your bot on Telegram:
+Message your bot on Telegram:
 
 | Command | Action |
 |---------|--------|
-| `.list` | List available terminal windows |
-| `.1` `.2` ... | Connect to a window by number |
+| `.list` | List available terminal sessions |
+| `.1` `.2` ... | Connect to a session by number |
 | `.help` | Show help |
 | `.otptimeout <seconds>` | Set TOTP session timeout |
 | Any other text | Sent as keystrokes to the connected terminal |
 
+### Linux: tmux requirement
+
+On Linux, teleterm controls tmux sessions. Make sure your work is running inside tmux:
+
+```bash
+# Start a named session
+tmux new -s dev
+
+# Or start detached sessions
+tmux new -s server1 -d
+tmux new -s server2 -d
+```
+
+Then run teleterm separately (outside tmux or in its own tmux window) and use `.list` to see your sessions.
+
 ### Keystroke Modifiers
 
-| Emoji | Modifier |
-|-------|----------|
-| `❤️` | Ctrl |
-| `💙` | Alt |
-| `💚` | Cmd |
-| `💛` | ESC |
-| `🧡` | Enter |
-| `💜` | Suppress auto-newline |
+Prefix your message with an emoji to add a modifier key:
 
-Example: send `❤️c` to send Ctrl+C.
+| Emoji | Modifier | Example |
+|-------|----------|---------|
+| `❤️` | Ctrl | `❤️c` = Ctrl+C |
+| `💙` | Alt | `💙x` = Alt+X |
+| `💚` | Cmd | macOS only |
+| `💛` | ESC | `💛` = send Escape |
+| `🧡` | Enter | `🧡` = send Enter |
+| `💜` | Suppress auto-newline | `ls -la💜` = no Enter appended |
 
 ### Escape Sequences
 
-`\n` for Enter, `\t` for Tab, `\\` for backslash.
+`\n` for Enter, `\t` for Tab, `\\` for literal backslash.
 
 ## Security
 
 - **Owner lock**: The first Telegram user to message the bot becomes the owner. All other users are ignored.
 - **TOTP**: By default, teleterm requires Google Authenticator verification. A QR code is shown on first launch. Use `--use-weak-security` to disable.
+- **One bot = one machine**: Don't share a bot token across machines. Each machine should have its own bot.
 - **Reset**: Delete `mybot.sqlite` to reset ownership and TOTP.
 
 ## Permissions
 
-teleterm requires **Accessibility** permission to read terminal text and inject keystrokes. macOS will prompt you on first use, or grant it manually in:
+**macOS:** Requires Accessibility permission. macOS will prompt on first use, or grant it in System Settings > Privacy & Security > Accessibility.
 
-**System Settings > Privacy & Security > Accessibility**
-
-Add your terminal app (iTerm2, Terminal, etc.) or teleterm itself.
+**Linux:** No special permissions needed. Just ensure the user running teleterm can access the tmux socket.
 
 ## Supported Terminals
 
-Terminal.app, iTerm2, Ghostty, kitty, Alacritty, Hyper, Warp, WezTerm, Tabby.
+**macOS:** Terminal.app, iTerm2, Ghostty, kitty, Alacritty, Hyper, Warp, WezTerm, Tabby.
 
-## How It Works
-
-Unlike the original tgterm which captures window screenshots (requiring Screen Recording permission), teleterm reads terminal text content via the macOS Accessibility API (`AXUIElement`). The visible terminal output is sent as monospace text messages to Telegram, with a refresh button to update on demand.
+**Linux:** Any terminal running inside tmux.
 
 ## License
 
