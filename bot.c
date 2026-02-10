@@ -1,7 +1,7 @@
 /*
  * bot.c - Telegram bot to control terminal windows on macOS
  *
- * Allows capturing screenshots and sending keystrokes to terminal applications
+ * Allows reading terminal text and sending keystrokes to terminal applications
  * (Terminal, iTerm2, Ghostty, kitty, etc.) via Telegram messages.
  *
  * Commands:
@@ -1046,7 +1046,7 @@ void handle_request(sqlite3 *db, BotRequest *br) {
         botSendMessage(br->target, msg, 0);
         sdsfree(msg);
 
-        /* Raise the window and send welcome screenshot. */
+        /* Raise the window and send terminal text. */
         raise_window_by_id(w->pid, w->window_id);
         send_terminal_text(br->target);
         goto done;
