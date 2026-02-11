@@ -325,9 +325,9 @@ sds build_list_message(void) {
         char status[160] = "";
         if (t->command[0]) {
             if (is_shell_name(t->command))
-                snprintf(status, sizeof(status), " \xe2\x9c\x85");          /* ✅ idle */
+                snprintf(status, sizeof(status), " \xe2\x9c\x85 ready");           /* ✅ ready */
             else
-                snprintf(status, sizeof(status), " \xe2\x8f\xb3 %s", t->command); /* ⏳ cmd */
+                snprintf(status, sizeof(status), " \xe2\x8f\xb3 %s", t->command);  /* ⏳ cmd */
         }
         char line[512];
         if (t->title[0]) {
