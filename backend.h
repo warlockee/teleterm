@@ -10,7 +10,6 @@ typedef struct {
     pid_t pid;            /* process PID */
     char name[128];       /* macOS: app name, tmux: session:window.pane */
     char title[256];      /* window/pane title or current command */
-    char command[128];    /* foreground process name (e.g. "bash", "vim", "python") */
 } TermInfo;
 
 /* ============================================================================

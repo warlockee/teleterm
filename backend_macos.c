@@ -11,7 +11,6 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
-#include <libproc.h>
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -61,154 +60,6 @@ void backend_free_list(void) {
         TermList = NULL;
     }
     TermCount = 0;
-}
-
-/* ============================================================================
- * Process tree helpers — detect foreground command via libproc
- * ========================================================================= */
-
-/* Walk to the deepest descendant of pid, return its process name. */
-static int get_foreground_name(pid_t pid, char *out, size_t outsize) {
-    out[0] = '\0';
-    pid_t cur = pid;
-
-    for (int depth = 0; depth < 20; depth++) {
-        pid_t kids[128];
-        int got = proc_listchildpids(cur, kids, sizeof(kids));
-        int n = got;
-        if (n <= 0) break;
-        cur = kids[n - 1];  /* last child = most recently forked */
-    }
-
-    return proc_name(cur, out, (uint32_t)outsize) > 0 ? 1 : 0;
-}
-
-/* Detect foreground command for a terminal window.
- * Walks child process trees and tries to match leaf names to window title. */
-static void detect_window_command(pid_t app_pid, const char *title,
-                                   char *out, size_t outsize) {
-    out[0] = '\0';
-
-    pid_t children[128];
-    int got = proc_listchildpids(app_pid, children, sizeof(children));
-    int nch = got;
-    if (nch <= 0) return;
-
-    char first_leaf[128] = "";
-
-    for (int i = 0; i < nch; i++) {
-        char leaf[128];
-        if (!get_foreground_name(children[i], leaf, sizeof(leaf))) continue;
-
-        /* If this leaf name appears in the window title, it's our match. */
-        if (title[0] && strstr(title, leaf)) {
-            strncpy(out, leaf, outsize - 1);
-            out[outsize - 1] = '\0';
-            return;
-        }
-
-        if (!first_leaf[0])
-            strncpy(first_leaf, leaf, sizeof(first_leaf) - 1);
-    }
-
-    /* Fallback: use first leaf found. */
-    if (first_leaf[0]) {
-        strncpy(out, first_leaf, outsize - 1);
-        out[outsize - 1] = '\0';
-    }
-}
-
-/* ============================================================================
- * Text prompt detection — check if terminal shows an input prompt
- * ========================================================================= */
-
-/* Forward declarations for AX text capture. */
-static sds ax_read_value(AXUIElementRef element);
-static sds ax_get_text_content(AXUIElementRef element);
-
-/* Trim trailing whitespace including non-breaking spaces (iTerm2 pads
- * terminal lines with U+00A0 = 0xC2 0xA0 to the full column width). */
-static size_t trim_trailing(const char *s, size_t len) {
-    while (len > 0) {
-        unsigned char c = (unsigned char)s[len - 1];
-        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') { len--; continue; }
-        /* UTF-8 non-breaking space: C2 A0 */
-        if (c == 0xA0 && len >= 2 && (unsigned char)s[len - 2] == 0xC2)
-            { len -= 2; continue; }
-        break;
-    }
-    return len;
-}
-
-/* Skip leading whitespace including NBSP. Returns new start and updates len. */
-static const unsigned char *skip_leading(const unsigned char *s, size_t *len) {
-    while (*len > 0) {
-        if (*s == ' ') { s++; (*len)--; continue; }
-        if (*len >= 2 && s[0] == 0xC2 && s[1] == 0xA0) { s += 2; *len -= 2; continue; }
-        break;
-    }
-    return s;
-}
-
-/* Check if terminal text has an input prompt in the last few non-empty lines.
- * Catches shell prompts ($, #, %, >, ❯, ➜) at line end OR start.
- * Needs a generous budget because TUIs (Claude Code) and tmux add status
- * bars, separators, etc. below the actual prompt line. */
-static int text_shows_prompt(const char *text) {
-    size_t len = strlen(text);
-    if (len == 0) return 0;
-
-    int lines_checked = 0;
-    size_t pos = trim_trailing(text, len);
-
-    while (pos > 0 && lines_checked < 10) {
-        size_t end = pos;
-        while (pos > 0 && text[pos-1] != '\n') pos--;
-
-        const char *line = text + pos;
-        size_t line_len = trim_trailing(line, end - pos);
-
-        if (line_len == 0) {
-            if (pos > 0) pos--;
-            continue;
-        }
-
-        /* Check prompt char at END of line. */
-        char last = line[line_len - 1];
-        if (last == '$' || last == '#' || last == '%' || last == '>') return 1;
-
-        /* ❯ (E2 9D AF) or ➜ (E2 9E 9C) at end. */
-        if (line_len >= 3) {
-            const unsigned char *p = (const unsigned char *)line + line_len - 3;
-            if ((p[0] == 0xE2 && p[1] == 0x9D && p[2] == 0xAF) ||
-                (p[0] == 0xE2 && p[1] == 0x9E && p[2] == 0x9C)) return 1;
-        }
-
-        /* Check prompt char at START of line (skip leading whitespace).
-         * Catches TUI prompts like Claude Code's "> " or "❯ ". */
-        const unsigned char *ls = (const unsigned char *)line;
-        size_t lr = line_len;
-        ls = skip_leading(ls, &lr);
-        if (lr >= 1) {
-            char first = (char)ls[0];
-            if ((first == '>' || first == '$' || first == '#' || first == '%') &&
-                (lr == 1 || ls[1] == ' ' ||
-                 (lr >= 3 && ls[1] == 0xC2 && ls[2] == 0xA0))) return 1;
-        }
-        /* ❯ or ➜ at start. */
-        if (lr >= 3) {
-            if ((ls[0] == 0xE2 && ls[1] == 0x9D && ls[2] == 0xAF) ||
-                (ls[0] == 0xE2 && ls[1] == 0x9E && ls[2] == 0x9C)) {
-                if (lr == 3 || ls[3] == ' ' ||
-                    (lr >= 5 && ls[3] == 0xC2 && ls[4] == 0xA0)) return 1;
-            }
-        }
-
-        lines_checked++;
-        if (pos > 0) pos--;
-    }
-
-    return 0;
 }
 
 /* ============================================================================
@@ -286,17 +137,16 @@ int backend_list(void) {
         t->name[sizeof(t->name) - 1] = '\0';
         strncpy(t->title, title, sizeof(t->title) - 1);
         t->title[sizeof(t->title) - 1] = '\0';
-        t->command[0] = '\0';
     }
 
     CFRelease(list);
 
-    /* Fill in titles, detect command status via AX text + process tree. */
+    /* Fill in titles from AX for windows that need it. */
     for (int i = 0; i < TermCount; i++) {
-        int prompt_found = 0;
+        if (TermList[i].title[0]) continue;
 
         AXUIElementRef app = AXUIElementCreateApplication(TermList[i].pid);
-        if (!app) goto do_proc;
+        if (!app) continue;
         CFArrayRef axwins = NULL;
         AXUIElementCopyAttributeValue(app, kAXWindowsAttribute, (CFTypeRef *)&axwins);
         if (axwins) {
@@ -307,21 +157,12 @@ int backend_list(void) {
                 CGWindowID wid = 0;
                 if (_AXUIElementGetWindow(win, &wid) == kAXErrorSuccess &&
                     wid == target_wid) {
-                    /* Get title if missing. */
-                    if (!TermList[i].title[0]) {
-                        CFStringRef title = NULL;
-                        AXUIElementCopyAttributeValue(win, kAXTitleAttribute, (CFTypeRef *)&title);
-                        if (title) {
-                            CFStringGetCString(title, TermList[i].title,
-                                sizeof(TermList[i].title), kCFStringEncodingUTF8);
-                            CFRelease(title);
-                        }
-                    }
-                    /* Check terminal text for input prompt. */
-                    sds text = ax_get_text_content(win);
-                    if (text) {
-                        prompt_found = text_shows_prompt(text);
-                        sdsfree(text);
+                    CFStringRef title = NULL;
+                    AXUIElementCopyAttributeValue(win, kAXTitleAttribute, (CFTypeRef *)&title);
+                    if (title) {
+                        CFStringGetCString(title, TermList[i].title,
+                            sizeof(TermList[i].title), kCFStringEncodingUTF8);
+                        CFRelease(title);
                     }
                     break;
                 }
@@ -329,18 +170,6 @@ int backend_list(void) {
             CFRelease(axwins);
         }
         CFRelease(app);
-
-do_proc:
-        if (prompt_found) {
-            /* Text shows a prompt → terminal is idle/waiting for input. */
-            strncpy(TermList[i].command, "shell",
-                sizeof(TermList[i].command) - 1);
-            TermList[i].command[sizeof(TermList[i].command) - 1] = '\0';
-        } else {
-            /* No prompt visible → use process tree for command name. */
-            detect_window_command(TermList[i].pid, TermList[i].title,
-                TermList[i].command, sizeof(TermList[i].command));
-        }
     }
 
     return TermCount;
