@@ -66,7 +66,7 @@ int backend_list(void) {
     sds output = run_cmd(
         "tmux list-panes -a -F "
         "'#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}"
-        "\t#{pane_pid}\t#{pane_title}\t#{pane_current_command}'"
+        "\t#{pane_pid}\t#{pane_title}'"
     );
     if (!output) return 0;
 
@@ -121,13 +121,6 @@ int backend_list(void) {
 
             strncpy(t->title, cols[3], sizeof(t->title) - 1);
             t->title[sizeof(t->title) - 1] = '\0';
-
-            if (ncols >= 5) {
-                strncpy(t->command, cols[4], sizeof(t->command) - 1);
-                t->command[sizeof(t->command) - 1] = '\0';
-            } else {
-                t->command[0] = '\0';
-            }
 
             TermCount++;
         }
