@@ -6,6 +6,9 @@ Works on **macOS** (via Accessibility API) and **Linux** (via tmux).
 
 > **One bot per machine.** Each machine needs its own Telegram bot token. Create a separate bot for each machine you want to control (e.g. `@my_macbook_bot`, `@my_server_bot`). Only one teleterm instance can use a given bot token at a time.
 
+![screenrecording](https://github.com/user-attachments/assets/64602166-6016-4909-bf17-fcabe03002ad)
+
+
 ## Quick Start
 
 ```bash
