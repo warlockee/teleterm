@@ -104,6 +104,21 @@ Prefix your message with an emoji to add a modifier key:
 
 `\n` for Enter, `\t` for Tab, `\\` for literal backslash.
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TELETERM_VISIBLE_LINES` | `40` | Number of terminal lines to include in output. Increase for more context, decrease for shorter messages. |
+| `TELETERM_SPLIT_MESSAGES` | off | When set to `1` or `true`, long output is split across multiple Telegram messages. When off (default), output is truncated to fit a single message, keeping the most recent lines. |
+
+Terminal output is sent as a single message by default. Each new command or refresh **deletes the previous output messages** and sends fresh ones, creating a clean "live terminal" view rather than spamming the chat.
+
+If your terminal produces very long output (e.g. build logs) and you want to see all of it, enable splitting:
+
+```bash
+TELETERM_SPLIT_MESSAGES=1 ./teleterm
+```
+
 ## Security
 
 - **Owner lock**: The first Telegram user to message the bot becomes the owner. All other users are ignored.
