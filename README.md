@@ -2,12 +2,9 @@
 
 Control your terminal from Telegram. Send keystrokes, read terminal output — all from your phone.
 
-![screenrecording](https://github.com/user-attachments/assets/64602166-6016-4909-bf17-fcabe03002ad)
-
-Works on **macOS** and **Linux**.
+Works on **macOS** (via Accessibility API) and **Linux** (via tmux).
 
 > **One bot per machine.** Each machine needs its own Telegram bot token. Create a separate bot for each machine you want to control (e.g. `@my_macbook_bot`, `@my_server_bot`). Only one teleterm instance can use a given bot token at a time.
->
 
 ## Quick Start
 
@@ -103,6 +100,21 @@ Prefix your message with an emoji to add a modifier key:
 ### Escape Sequences
 
 `\n` for Enter, `\t` for Tab, `\\` for literal backslash.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TELETERM_VISIBLE_LINES` | `40` | Number of terminal lines to include in output. Increase for more context, decrease for shorter messages. |
+| `TELETERM_SPLIT_MESSAGES` | off | When set to `1` or `true`, long output is split across multiple Telegram messages. When off (default), output is truncated to fit a single message, keeping the most recent lines. |
+
+Terminal output is sent as a single message by default. Each new command or refresh **deletes the previous output messages** and sends fresh ones, creating a clean "live terminal" view rather than spamming the chat.
+
+If your terminal produces very long output (e.g. build logs) and you want to see all of it, enable splitting:
+
+```bash
+TELETERM_SPLIT_MESSAGES=1 ./teleterm
+```
 
 ## Security
 
