@@ -894,7 +894,15 @@ void botMain(void) {
     int64_t nextid = -100; /* Start getting the last 100 messages. */
     int previd;
 
+    printf("Connecting to Telegram...\n");
+    fflush(stdout);
     botGetUsername(); // Will cache Bot.username as side effect.
+    if (Bot.username) {
+        printf("Bot @%s is running. Waiting for messages.\n", Bot.username);
+    } else {
+        printf("Warning: could not fetch bot username. Continuing anyway.\n");
+    }
+    fflush(stdout);
     while(1) {
         previd = nextid;
         nextid = botProcessUpdates(nextid,1);
