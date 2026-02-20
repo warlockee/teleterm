@@ -84,7 +84,7 @@ fi
 # Step 2: Build
 info "Building teleterm..."
 make clean -s 2>/dev/null || true
-if make -s 2>&1 | grep -v "warning:"; then
+if make -s; then
     ok "Build successful."
 else
     err "Build failed. Check errors above."
@@ -108,16 +108,23 @@ fi
 if [ ! -f apikey.txt ]; then
     echo -e "${BOLD}Telegram Bot Setup${NC}"
     echo ""
-    echo -e "  ${YELLOW}Each machine needs its own bot.${NC}"
-    echo "  Don't reuse a bot token from another machine."
+    echo "  1) I already have a bot token for this machine"
+    echo "  2) I need to create a new bot"
     echo ""
-    echo "  To create a new bot:"
+    read -p "  Choose [1/2]: " -n 1 -r BOT_CHOICE
     echo ""
-    echo "  1. Open Telegram and message @BotFather"
-    echo "  2. Send /newbot"
-    echo "  3. Name it after this machine (e.g. 'My Server Terminal')"
-    echo "  4. Copy the API token"
     echo ""
+
+    if [[ "$BOT_CHOICE" == "2" ]]; then
+        echo "  To create a new bot:"
+        echo ""
+        echo "  1. Open Telegram and message @BotFather"
+        echo "  2. Send /newbot"
+        echo "  3. Name it after this machine (e.g. 'My Server Terminal')"
+        echo "  4. Copy the API token"
+        echo ""
+    fi
+
     read -p "  Paste your bot API token: " API_KEY
     API_KEY=$(echo "$API_KEY" | tr -d '[:space:]')
 
