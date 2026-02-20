@@ -12,7 +12,7 @@ Works on **macOS** and **Linux**.
 ## Quick Start
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/warlockee/teleterm/main/setup.sh)
+curl -fsSL https://raw.githubusercontent.com/warlockee/teleterm/main/setup.sh | bash
 ```
 
 The setup script handles everything: clones the repo, installs dependencies, builds the project, walks you through creating a Telegram bot, and starts teleterm. Works on both macOS and Linux.

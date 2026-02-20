@@ -21,7 +21,7 @@ if [ ! -f "$SCRIPT_DIR/Makefile" ]; then
     info "Cloning teleterm..."
     git clone https://github.com/warlockee/teleterm.git
     cd teleterm
-    exec ./setup.sh "$@"
+    exec ./setup.sh "$@" < /dev/tty
 fi
 
 cd "$SCRIPT_DIR"
