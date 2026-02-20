@@ -327,11 +327,13 @@ sds backend_capture_text(void) {
  * Keystroke helpers  (static)
  * ========================================================================= */
 
-/* Bring app to front. */
+/* Bring app to front via Accessibility API. */
 static int bring_to_front(pid_t pid) {
-    ProcessSerialNumber psn;
-    if (GetProcessForPID(pid, &psn) != noErr) return -1;
-    if (SetFrontProcessWithOptions(&psn, kSetFrontProcessFrontWindowOnly) != noErr) return -1;
+    AXUIElementRef app = AXUIElementCreateApplication(pid);
+    if (!app) return -1;
+    AXError err = AXUIElementSetAttributeValue(app, kAXFrontmostAttribute, kCFBooleanTrue);
+    CFRelease(app);
+    if (err != kAXErrorSuccess) return -1;
     usleep(100000);
     return 0;
 }
