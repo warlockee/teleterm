@@ -12,16 +12,22 @@ Works on **macOS** and **Linux**.
 ## Quick Start
 
 ```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/warlockee/teleterm/main/setup.sh)
+```
+
+The setup script handles everything: clones the repo, installs dependencies, builds the project, walks you through creating a Telegram bot, and starts teleterm. Works on both macOS and Linux.
+
+Or clone manually:
+
+```bash
 git clone https://github.com/warlockee/teleterm.git
 cd teleterm
 ./setup.sh
 ```
 
-The setup script handles everything: installs dependencies, builds the project, walks you through creating a Telegram bot, and starts teleterm. Works on both macOS and Linux.
-
 ## How It Works
 
-On **macOS**, teleterm reads terminal window text via the Accessibility API (`AXUIElement`) and injects keystrokes via `CGEvent`. It works with any terminal app — no Screen Recording permission needed.
+On **macOS**, teleterm reads terminal window text via the Accessibility API (`AXUIElement`), injects keystrokes via `CGEvent`, and focuses windows using `AXUIElement`. It works with any terminal app — no Screen Recording permission needed.
 
 On **Linux**, teleterm uses tmux: `tmux list-panes` to discover sessions, `tmux capture-pane` to read content, and `tmux send-keys` to inject keystrokes. All sessions you want to control must run inside tmux.
 
@@ -43,11 +49,13 @@ Each machine needs its own bot. To create one:
 ### Run
 
 ```bash
-# Save the token (recommended)
-echo "YOUR_BOT_TOKEN" > apikey.txt
+# The setup script saves the token to apikey.txt and creates run.sh
+./run.sh
+
+# Or run directly
 ./teleterm
 
-# Or pass it directly
+# Or pass the token directly
 ./teleterm --apikey YOUR_BOT_TOKEN
 ```
 

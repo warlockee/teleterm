@@ -14,7 +14,16 @@ ok()    { echo -e "${GREEN}=>${NC} $1"; }
 warn()  { echo -e "${YELLOW}=>${NC} $1"; }
 err()   { echo -e "${RED}=>${NC} $1"; }
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+
+# Auto-clone if running via curl (not inside the repo)
+if [ ! -f "$SCRIPT_DIR/Makefile" ]; then
+    info "Cloning teleterm..."
+    git clone https://github.com/warlockee/teleterm.git
+    cd teleterm
+    exec ./setup.sh "$@"
+fi
+
 cd "$SCRIPT_DIR"
 
 echo -e "${BOLD}"
