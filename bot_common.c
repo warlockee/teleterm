@@ -302,6 +302,19 @@ void disconnect(void) {
  * Bot Command Handlers
  * ========================================================================= */
 
+/* Escape Markdown special characters in a string so that
+ * botSendMessage() (which uses parse_mode=Markdown) won't choke
+ * on user-controlled text like window titles. */
+static sds markdown_escape(const char *s) {
+    sds out = sdsempty();
+    for (; *s; s++) {
+        if (*s == '_' || *s == '*' || *s == '`' || *s == '[')
+            out = sdscatlen(out, "\\", 1);
+        out = sdscatlen(out, s, 1);
+    }
+    return out;
+}
+
 /* Build the .list response. */
 sds build_list_message(void) {
     backend_list();
@@ -315,15 +328,17 @@ sds build_list_message(void) {
     msg = sdscat(msg, "Terminal windows:\n");
     for (int i = 0; i < TermCount; i++) {
         TermInfo *t = &TermList[i];
-        char line[512];
+        sds ename = markdown_escape(t->name);
+        sds etitle = markdown_escape(t->title);
         if (t->title[0]) {
-            snprintf(line, sizeof(line), ".%d %s - %s\n",
-                     i + 1, t->name, t->title);
+            msg = sdscatprintf(msg, ".%d %s - %s\n",
+                               i + 1, ename, etitle);
         } else {
-            snprintf(line, sizeof(line), ".%d %s\n",
-                     i + 1, t->name);
+            msg = sdscatprintf(msg, ".%d %s\n",
+                               i + 1, ename);
         }
-        msg = sdscat(msg, line);
+        sdsfree(ename);
+        sdsfree(etitle);
     }
     return msg;
 }
