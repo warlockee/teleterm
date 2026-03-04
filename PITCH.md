@@ -34,7 +34,7 @@ You (phone)  -->  Telegram  -->  teleterm  -->  Your actual terminal
 - **List** all terminal windows/sessions on your machine
 - **Read** the current output of any terminal
 - **Send** keystrokes, commands, Ctrl+C, Enter -- anything
-- **AI Manager** -- an autonomous agent that monitors terminals, executes tasks, answers questions about what's running, and remembers your preferences across sessions
+- **Works everywhere** -- macOS native (iTerm2, Terminal.app, Ghostty) and Linux (tmux sessions)
 
 ---
 
@@ -49,8 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/warlockee/teleterm/main/setup.sh | 
 Setup walks you through:
 1. Building from source (C, zero heavy dependencies)
 2. Creating a Telegram bot via @BotFather
-3. Optionally enabling the AI manager (Claude-powered)
-4. Optionally enabling TOTP (Google Authenticator)
+3. Optionally enabling TOTP (Google Authenticator)
 
 ### Daily workflow:
 
@@ -65,27 +64,9 @@ Bot: [Terminal output appears as monospace text + Refresh button]
 You: git status
 Bot: [Shows git output in real time]
 
-You: .mgr
-You: "check if the build finished in terminal 2, and if it failed, show me the errors"
-Bot: I'll check terminal 2 now...
-Bot: Build failed with 3 errors. Here are the relevant lines: [output]
+You: Ctrl+C
+Bot: [Shows updated terminal output]
 ```
-
----
-
-## The AI Manager
-
-The optional AI manager turns teleterm from a remote control into an **autonomous terminal agent**.
-
-| Capability | Description |
-|---|---|
-| **Command execution** | Send any command to any terminal, with automatic queueing per-terminal |
-| **Output monitoring** | Watches for output to stabilize before reporting back (no guessing fast vs slow) |
-| **Background tasks** | "Watch terminal 3 and tell me when the deploy finishes" |
-| **Risk classification** | Auto-executes safe prompts, asks for confirmation on dangerous ones (rm -rf, production, force push) |
-| **Long-term memory** | Remembers user rules, preferences, and environment facts across restarts (SQLite-backed) |
-
-The AI manager uses Claude via tool-use. It has 6 tools for terminal operations and 2 for persistent memory. Every command is queued per-terminal to prevent overlap. Output stability detection (not regex) determines when a command finishes.
 
 ---
 
@@ -130,13 +111,13 @@ Three converging trends create teleterm's opportunity:
 | Mobile-first | Yes | Yes | Yes | Partial | No | Yes (Slack) |
 | macOS GUI terminals | Yes | Yes | No | No | Desktop only | No |
 | Linux/tmux | Yes | No | Some | Yes | No | Some |
-| AI agent built in | Yes | No | No | No | Yes (desktop) | Partial |
+| AI agent built in | No | No | No | No | Yes (desktop) | Partial |
 | TOTP security | Yes | No | Rare | Yes | N/A | Enterprise |
-| Long-term memory | Yes | No | No | No | No | No |
+| Long-term memory | No | No | No | No | No | No |
 | Self-hosted / free | Yes | Yes | Yes | Paid | Freemium | Paid |
 | Command queueing | Yes | No | No | No | N/A | Yes |
 
-**Closest competitor**: antirez's tgterm (macOS-only, no Linux, no AI, no security, no memory). teleterm is a fork that has diverged significantly.
+**Closest competitor**: antirez's tgterm (macOS-only, no Linux, no security). teleterm is a fork that has diverged significantly.
 
 **Key insight**: AI terminal tools (Warp, Claude Code, Cline) are **complementary** -- they run inside the terminals that teleterm controls. We're the remote access layer for the AI coding agent era.
 
@@ -149,11 +130,7 @@ Three converging trends create teleterm's opportunity:
 ```
 Telegram  <-->  teleterm (C)  <-->  terminal sessions
                     |
-                    |--- teleterm-ctl (C CLI)
-                    |
-                    +--- teleterm-mgr (Python + Claude API)
-                              |
-                              +--- memory.sqlite (persistent)
+                    +--- teleterm-ctl (C CLI)
 ```
 
 ### By the numbers
@@ -162,7 +139,6 @@ Telegram  <-->  teleterm (C)  <-->  terminal sessions
 |---|---|
 | Core C code | ~5,500 lines |
 | Third-party C (cJSON, QR, SDS, SHA1) | ~5,000 lines |
-| Python AI manager | ~1,000 lines |
 | External dependencies | libcurl, libsqlite3, tmux (Linux) |
 | Build time | < 5 seconds |
 | Binary size | < 500KB |
@@ -174,8 +150,7 @@ Telegram  <-->  teleterm (C)  <-->  terminal sessions
 1. **Native OS integration** -- macOS Accessibility API for reading terminal windows (no screen capture, no OCR). Direct CGEvent injection for keystrokes. No electron, no overhead.
 2. **Real terminal attachment** -- not a new shell. Connects to your actual iTerm2, kitty, Ghostty, Alacritty, Terminal.app windows.
 3. **Stability-based command detection** -- no regex patterns, no heuristics. Monitors output and waits until it stops changing. Works with any program.
-4. **Per-terminal command queue** -- prevents overlapping commands. AI manager can fire off multiple commands and they execute serially, each waiting for the previous to finish.
-5. **Persistent AI memory** -- the manager learns your preferences and environment across restarts. No other terminal tool has this.
+4. **Minimal footprint** -- pure C, no runtime dependencies beyond libcurl and SQLite. Builds in under 5 seconds, runs in under 10MB.
 
 ---
 
@@ -185,7 +160,6 @@ Telegram  <-->  teleterm (C)  <-->  terminal sessions
 - Fork of antirez's tgterm (Salvatore Sanfilippo, creator of Redis)
 - Curl one-liner install working on macOS and Linux
 - 7 merged PRs with active development
-- AI manager with 8 tools, background tasks, risk classification, and persistent memory
 - Supported terminal apps: iTerm2, Terminal.app, Ghostty, kitty, Alacritty, Warp, and all tmux sessions on Linux
 
 ---
@@ -204,7 +178,7 @@ Telegram  <-->  teleterm (C)  <-->  terminal sessions
 - Team tier ($29/mo/seat) with shared terminal access and audit logs
 
 ### Phase 3: Platform
-- **Plugin marketplace** -- community-built tools for the AI manager (deploy helpers, monitoring, CI/CD integration)
+- **Plugin marketplace** -- community-built extensions (deploy helpers, monitoring, CI/CD integration)
 - **Enterprise** -- SSO, RBAC, compliance logging, Slack/Teams integration
 - **API** -- third-party apps can control terminals via teleterm's infrastructure
 
@@ -248,7 +222,6 @@ Telegram  <-->  teleterm (C)  <-->  terminal sessions
 Building teleterm: experienced systems programmers with deep knowledge of macOS internals, terminal emulators, and LLM agent architectures.
 
 - C systems programming (macOS Accessibility API, CGEvent, POSIX)
-- Python AI agent development (Claude API tool-use, async patterns)
 - DevOps and infrastructure automation
 - Open source community building
 

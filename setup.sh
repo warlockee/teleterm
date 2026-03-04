@@ -155,45 +155,6 @@ if [ ! -f apikey.txt ]; then
     fi
 fi
 
-# Step 3b: AI Manager setup (optional)
-echo ""
-echo -e "${BOLD}AI Manager (optional)${NC}"
-echo ""
-echo "  teleterm can run an AI manager agent that monitors all terminals,"
-echo "  answers questions about their state, and executes tasks autonomously."
-echo "  Requires an Anthropic API key (Claude)."
-echo ""
-echo "  1) Enable AI manager"
-echo "  2) Skip for now"
-echo ""
-read -p "  Choose [1/2]: " -n 1 -r MGR_CHOICE
-echo ""
-
-MGR_FLAGS=""
-if [[ "$MGR_CHOICE" == "1" ]]; then
-    read -p "  Anthropic API key: " ANTHROPIC_KEY
-    ANTHROPIC_KEY=$(echo "$ANTHROPIC_KEY" | tr -d '[:space:]')
-    if [ -z "$ANTHROPIC_KEY" ]; then
-        warn "No API key provided. Skipping AI manager."
-    else
-        info "Setting up Python environment for AI manager..."
-        if command -v python3 &>/dev/null; then
-            python3 -m venv mgr/.venv 2>/dev/null || true
-            if [ -f mgr/.venv/bin/pip ]; then
-                mgr/.venv/bin/pip install -q -r mgr/requirements.txt
-                ok "AI manager dependencies installed."
-                MGR_FLAGS="--mgr $(pwd)/mgr/teleterm_mgr.py"
-                # Save the API key for the run script
-                export ANTHROPIC_API_KEY="$ANTHROPIC_KEY"
-            else
-                warn "Failed to create Python venv. AI manager unavailable."
-            fi
-        else
-            warn "python3 not found. AI manager requires Python 3."
-        fi
-    fi
-fi
-
 # Step 4: Security mode
 echo ""
 echo -e "${BOLD}Security Mode${NC}"
@@ -232,20 +193,11 @@ if [[ "$OS" == "Darwin" ]]; then
 fi
 
 # Step 6: Create launch script
-if [ -n "$ANTHROPIC_KEY" ]; then
 cat > run.sh << RUNEOF
 #!/bin/bash
 cd "\$(dirname "\$0")"
-export ANTHROPIC_API_KEY="$ANTHROPIC_KEY"
-exec ./teleterm $EXTRA_FLAGS $MGR_FLAGS "\$@"
+exec ./teleterm $EXTRA_FLAGS "\$@"
 RUNEOF
-else
-cat > run.sh << RUNEOF
-#!/bin/bash
-cd "\$(dirname "\$0")"
-exec ./teleterm $EXTRA_FLAGS $MGR_FLAGS "\$@"
-RUNEOF
-fi
 chmod +x run.sh
 ok "Created run.sh"
 
@@ -274,7 +226,6 @@ echo ""
 echo "  Bot commands:"
 echo "    .list    - List terminal sessions"
 echo "    .1 .2 .. - Connect to a session"
-echo "    .mgr     - Toggle AI manager mode"
 echo "    .help    - Show all commands"
 echo ""
 echo -e "  ${YELLOW}Tip:${NC} To run in the background:"

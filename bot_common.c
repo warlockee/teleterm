@@ -23,9 +23,6 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <pthread.h>
-#include <signal.h>
-#include <errno.h>
-
 #include "backend.h"
 #include "botlib.h"
 #include "sha1.h"
@@ -58,160 +55,7 @@ static int OtpTimeout = 300;          /* Timeout in seconds (default 5 min). */
 static int64_t TrackedMsgIds[MAX_TRACKED_MSGS];
 static int TrackedMsgCount = 0;
 
-/* ============================================================================
- * LLM Manager Agent (teleterm-mgr)
- * ========================================================================= */
-
-static int MgrMode = 0;              /* 1 if in manager conversation mode. */
-static pid_t MgrPid = -1;            /* PID of mgr child process. */
-static int MgrWriteFd = -1;          /* Pipe: teleterm writes to mgr stdin. */
-static int MgrReadFd = -1;           /* Pipe: teleterm reads mgr stdout. */
-static pthread_t MgrReaderThread;
-static int MgrReaderRunning = 0;
-static char MgrPath[512] = {0};      /* Path to teleterm-mgr script. */
-
 static sds markdown_escape(const char *s); /* forward decl */
-
-/* Reader thread: reads JSON lines from mgr stdout, forwards to Telegram. */
-static void *mgr_reader_thread(void *arg) {
-    UNUSED(arg);
-    FILE *fp = fdopen(MgrReadFd, "r");
-    if (!fp) return NULL;
-
-    char line[8192];
-    while (fgets(line, sizeof(line), fp)) {
-        /* Parse JSON: {"chat_id": N, "text": "..."} */
-        cJSON *msg = cJSON_Parse(line);
-        if (!msg) continue;
-
-        cJSON *chat = cJSON_Select(msg, ".chat_id:n");
-        cJSON *text = cJSON_Select(msg, ".text:s");
-
-        if (chat && text) {
-            int64_t chat_id = (int64_t)chat->valuedouble;
-            sds escaped = markdown_escape(text->valuestring);
-            botSendMessage(chat_id, escaped, 0);
-            sdsfree(escaped);
-        }
-        cJSON_Delete(msg);
-    }
-
-    fclose(fp);
-
-    /* Mgr process ended — clean up so mgr_start() can restart it. */
-    MgrPid = -1;
-    MgrWriteFd = -1;
-    MgrReadFd = -1;
-    MgrReaderRunning = 0;
-    printf("MGR: Reader thread exiting (manager process ended).\n");
-    return NULL;
-}
-
-/* Start the mgr child process. Returns 0 on success. */
-static int mgr_start(void) {
-    if (MgrPid > 0) return 0; /* Already running. */
-
-    if (MgrPath[0] == '\0') {
-        fprintf(stderr, "MGR: No manager path configured.\n");
-        return -1;
-    }
-
-    int pipe_to_mgr[2];   /* [0]=mgr reads, [1]=teleterm writes */
-    int pipe_from_mgr[2]; /* [0]=teleterm reads, [1]=mgr writes */
-
-    if (pipe(pipe_to_mgr) < 0 || pipe(pipe_from_mgr) < 0) {
-        perror("MGR: pipe");
-        return -1;
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("MGR: fork");
-        return -1;
-    }
-
-    if (pid == 0) {
-        /* Child: mgr process. */
-        close(pipe_to_mgr[1]);
-        close(pipe_from_mgr[0]);
-        dup2(pipe_to_mgr[0], STDIN_FILENO);
-        dup2(pipe_from_mgr[1], STDOUT_FILENO);
-        close(pipe_to_mgr[0]);
-        close(pipe_from_mgr[1]);
-
-        /* Determine ctl path (same dir as teleterm binary). */
-        char ctl_path[512];
-        char mgr_dir[512];
-        char *slash = strrchr(MgrPath, '/');
-        if (slash) {
-            size_t dirlen = slash - MgrPath;
-            snprintf(mgr_dir, sizeof(mgr_dir), "%.*s", (int)dirlen, MgrPath);
-        } else {
-            snprintf(mgr_dir, sizeof(mgr_dir), ".");
-        }
-        snprintf(ctl_path, sizeof(ctl_path), "./teleterm-ctl");
-        setenv("TELETERM_CTL", ctl_path, 1);
-
-        /* Try venv python first, fall back to system python3. */
-        char venv_py[512];
-        snprintf(venv_py, sizeof(venv_py), "%s/.venv/bin/python3", mgr_dir);
-        if (access(venv_py, X_OK) == 0) {
-            execl(venv_py, "python3", MgrPath, (char *)NULL);
-        }
-        execlp("python3", "python3", MgrPath, (char *)NULL);
-        perror("MGR: exec");
-        _exit(1);
-    }
-
-    /* Parent: teleterm. */
-    close(pipe_to_mgr[0]);
-    close(pipe_from_mgr[1]);
-    MgrWriteFd = pipe_to_mgr[1];
-    MgrReadFd = pipe_from_mgr[0];
-    MgrPid = pid;
-
-    /* Start reader thread. */
-    if (pthread_create(&MgrReaderThread, NULL, mgr_reader_thread, NULL) == 0) {
-        MgrReaderRunning = 1;
-    }
-
-    printf("MGR: Started manager (pid %d).\n", (int)MgrPid);
-    return 0;
-}
-
-/* Send a message to the mgr process. Attempts restart on failure. */
-static int mgr_send(int64_t chat_id, const char *text) {
-    /* If mgr is not running, try to start it. */
-    if (MgrWriteFd < 0 || MgrPid <= 0) {
-        if (mgr_start() != 0) return -1;
-    }
-
-    cJSON *msg = cJSON_CreateObject();
-    cJSON_AddNumberToObject(msg, "chat_id", (double)chat_id);
-    cJSON_AddStringToObject(msg, "text", text);
-    char *json = cJSON_PrintUnformatted(msg);
-    cJSON_Delete(msg);
-
-    sds line = sdscatprintf(sdsempty(), "%s\n", json);
-    free(json);
-
-    ssize_t written = write(MgrWriteFd, line, sdslen(line));
-
-    if (written < 0) {
-        perror("MGR: write failed, restarting");
-        close(MgrWriteFd);
-        MgrWriteFd = -1;
-        MgrPid = -1;
-
-        /* Try one restart. */
-        if (mgr_start() == 0) {
-            written = write(MgrWriteFd, line, sdslen(line));
-        }
-    }
-
-    sdsfree(line);
-    return (written > 0) ? 0 : -1;
-}
 
 /* ============================================================================
  * TOTP Authentication
@@ -460,8 +304,6 @@ sds build_help_message(void) {
         "Commands:\n"
         ".list - Show terminal windows\n"
         ".1 .2 ... - Connect to window\n"
-        ".mgr - Toggle AI manager mode\n"
-        ".exit - Leave manager mode\n"
         ".help - This help\n\n"
         "Once connected, text is sent as keystrokes.\n"
         "Newline is auto-added; end with `\xf0\x9f\x92\x9c` to suppress it.\n\n"
@@ -743,51 +585,6 @@ void handle_request(sqlite3 *db, BotRequest *br) {
 
     char *req = br->request;
 
-    /* Handle .mgr command: toggle manager mode. */
-    if (strcasecmp(req, ".mgr") == 0) {
-        if (!MgrMode) {
-            if (MgrPath[0] == '\0') {
-                botSendMessage(br->target,
-                    "Manager not configured. Start with --mgr <path>.", 0);
-                goto done;
-            }
-            if (mgr_start() != 0) {
-                botSendMessage(br->target,
-                    "Failed to start manager.", 0);
-                goto done;
-            }
-            MgrMode = 1;
-            botSendMessage(br->target,
-                "\xf0\x9f\xa4\x96 Manager mode. "
-                "Type normally to talk to me.\n"
-                ".exit to go back. "
-                "Dot commands (.list .1) still work.", 0);
-        } else {
-            MgrMode = 0;
-            botSendMessage(br->target, "Manager mode off.", 0);
-        }
-        goto done;
-    }
-
-    /* Handle .exit command: leave manager mode. */
-    if (strcasecmp(req, ".exit") == 0 && MgrMode) {
-        MgrMode = 0;
-        botSendMessage(br->target, "Manager mode off.", 0);
-        goto done;
-    }
-
-    /* In manager mode, route non-dot messages to mgr. */
-    if (MgrMode && req[0] != '.') {
-        if (mgr_send(br->target, req) == 0) {
-            botSendMessage(br->target, "\xf0\x9f\xa4\x96 ...", 0);
-        } else {
-            botSendMessage(br->target,
-                "Manager not available. Try .mgr to reconnect.", 0);
-            MgrMode = 0;
-        }
-        goto done;
-    }
-
     /* Handle .list command. */
     if (strcasecmp(req, ".list") == 0) {
         disconnect();
@@ -912,15 +709,8 @@ int main(int argc, char **argv) {
             printf("WARNING: OTP authentication disabled.\n");
         } else if (strcmp(argv[i], "--dbfile") == 0 && i+1 < argc) {
             dbfile = argv[i+1];
-        } else if (strcmp(argv[i], "--mgr") == 0 && i+1 < argc) {
-            strncpy(MgrPath, argv[i+1], sizeof(MgrPath) - 1);
-            MgrPath[sizeof(MgrPath) - 1] = '\0';
-            printf("MGR: Manager script: %s\n", MgrPath);
         }
     }
-
-    /* Ignore SIGPIPE so writes to broken mgr pipe return EPIPE instead. */
-    signal(SIGPIPE, SIG_IGN);
 
     /* TOTP setup: check/generate secret before starting the bot. */
     totp_setup(dbfile);

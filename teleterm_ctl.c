@@ -1,10 +1,9 @@
 /*
  * teleterm_ctl.c - CLI tool for teleterm terminal operations
  *
- * Provides a command-line interface to backend operations for use by
- * the LLM manager agent (teleterm-mgr). Each invocation is a separate
- * process with its own global state, avoiding conflicts with the main
- * teleterm bot.
+ * Provides a command-line interface to backend operations.
+ * Each invocation is a separate process with its own global state,
+ * avoiding conflicts with the main teleterm bot.
  *
  * Commands:
  *   teleterm-ctl list              - List terminals as JSON
