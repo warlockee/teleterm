@@ -1,5 +1,8 @@
 teleterm
+teleterm-ctl
 *.o
 *.sqlite
 apikey.txt
 run.sh
+mgr/.venv/
+__pycache__/

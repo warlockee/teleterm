@@ -14,15 +14,25 @@ else
 endif
 
 LIBS = -lcurl -lsqlite3
-OBJS = bot_common.o $(BACKEND) botlib.o sds.o cJSON.o sqlite_wrap.o json_wrap.o qrcodegen.o sha1.o
+OBJS = bot_common.o emoji.o $(BACKEND) botlib.o sds.o cJSON.o sqlite_wrap.o json_wrap.o qrcodegen.o sha1.o
+CTL_OBJS = teleterm_ctl.o emoji.o $(BACKEND) sds.o cJSON.o
 
-all: teleterm
+all: teleterm teleterm-ctl
 
 teleterm: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(FRAMEWORKS) $(LIBS)
 
+teleterm-ctl: $(CTL_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(CTL_OBJS) $(FRAMEWORKS)
+
 bot_common.o: bot_common.c botlib.h sds.h backend.h
 	$(CC) $(CFLAGS) -c bot_common.c
+
+teleterm_ctl.o: teleterm_ctl.c backend.h sds.h cJSON.h
+	$(CC) $(CFLAGS) -c teleterm_ctl.c
+
+emoji.o: emoji.c backend.h
+	$(CC) $(CFLAGS) -c emoji.c
 
 backend_macos.o: backend_macos.c backend.h sds.h botlib.h
 	$(CC) $(CFLAGS) -c backend_macos.c
@@ -52,6 +62,6 @@ sha1.o: sha1.c sha1.h
 	$(CC) $(CFLAGS) -c sha1.c
 
 clean:
-	rm -f teleterm *.o
+	rm -f teleterm teleterm-ctl *.o
 
 .PHONY: all clean
